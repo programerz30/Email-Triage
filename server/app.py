@@ -26,10 +26,12 @@ environments = {}
 
 class ResetRequest(BaseModel):
     task_name: Optional[str] = "task1_categorize"
+    task: Optional[str] = None  # alias used by inference.py
 
 class StepRequest(BaseModel):
     task_name: Optional[str] = "task1_categorize"
-    text: str  # The agent's response
+    task: Optional[str] = None
+    text: str = ""  # The agent's response
 
 
 # ─────────────────────────────────────────────
@@ -52,12 +54,16 @@ def health():
 
 
 @app.post("/reset")
-def reset(request: ResetRequest):
+def reset(request: Optional[ResetRequest] = None):
     """
     Start a new episode.
     Called at the beginning of every task run.
     """
-    task_name = request.task_name or "task1_categorize"
+    if request is None:
+        task_name = "task1_categorize"
+    else:
+        # Support both 'task' and 'task_name' fields
+        task_name = request.task or request.task_name or "task1_categorize"
     try:
         env = EmailTriageEnv(task_name=task_name)
         environments[task_name] = env
@@ -73,7 +79,7 @@ def step(request: StepRequest):
     Agent takes a step (submits a response).
     Returns observation, reward, done, info.
     """
-    task_name = request.task_name or "task1_categorize"
+    task_name = request.task or request.task_name or "task1_categorize"
 
     if task_name not in environments:
         raise HTTPException(
