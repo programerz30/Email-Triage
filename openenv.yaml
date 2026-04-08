@@ -1,0 +1,67 @@
+name: email-triage-env
+version: "1.0.0"
+description: >
+  A real-world email triage environment where an AI agent must read,
+  classify, prioritize, and respond to customer support emails.
+  Designed to evaluate agent performance on tasks humans do every day
+  in customer support and business operations roles.
+
+author: OpenEnv Hackathon Participant
+tags:
+  - openenv
+  - email
+  - triage
+  - customer-support
+  - nlp
+  - real-world
+
+tasks:
+  - name: task1_categorize
+    difficulty: easy
+    description: Classify the email into the correct category
+    max_steps: 3
+
+  - name: task2_prioritize
+    difficulty: medium
+    description: Classify the email and assign a priority level (1-5)
+    max_steps: 5
+
+  - name: task3_full_triage
+    difficulty: hard
+    description: Classify, prioritize, and write a professional reply
+    max_steps: 8
+
+action_space:
+  type: text
+  description: >
+    Free-form text response from the agent.
+    Format depends on the task (see task descriptions).
+
+observation_space:
+  type: structured
+  fields:
+    - email_id: string
+    - subject: string
+    - sender: string
+    - body: string
+    - task_description: string
+    - step_number: integer
+    - last_reward: float
+    - message: string
+
+reward:
+  type: float
+  range: [0.0, 1.0]
+  description: >
+    Partial credit reward given at each step.
+    Scores increase based on accuracy of category, priority,
+    and reply quality. Penalizes empty/lazy responses and too many steps.
+
+endpoints:
+  reset: POST /reset
+  step: POST /step
+  state: GET /state
+
+docker:
+  port: 7860
+  health_check: GET /health
