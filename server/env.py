@@ -75,7 +75,7 @@ class EmailTriageEnv:
         self.current_step = 0
         self.current_email = None
         self.done = False
-        self.cumulative_reward = 0.0
+        self.cumulative_reward = 0.01
         self.rewards_history = []
         self.attempts = []
 
@@ -95,7 +95,7 @@ class EmailTriageEnv:
             body=self.current_email["body"],
             task_description=self.task_config["description"],
             step_number=self.current_step,
-            last_reward=self.rewards_history[-1] if self.rewards_history else 0.0,
+            last_reward=self.rewards_history[-1] if self.rewards_history else 0.01,
             message=message or "Read the email carefully and respond as instructed."
         )
 
@@ -106,7 +106,7 @@ class EmailTriageEnv:
         """
         self.current_step = 0
         self.done = False
-        self.cumulative_reward = 0.0
+        self.cumulative_reward = 0.01
         self.rewards_history = []
         self.attempts = []
         self.current_email = self._pick_email()
@@ -131,7 +131,12 @@ class EmailTriageEnv:
         self.attempts.append(agent_text)
 
         # Grade the action
-        reward = self.grader(agent_text, self.current_email["id"])
+        try:
+            reward = self.grader(agent_text, self.current_email["id"])
+            if reward is None or not isinstance(reward, (int, float)):
+                reward = 0.01
+        except Exception:
+            reward = 0.01
 
         # Apply small penalty for very short/empty responses (penalize lazy behavior)
         if len(agent_text) < 3:
@@ -161,7 +166,7 @@ class EmailTriageEnv:
             message = f"Out of steps. Final score: {reward}. Better luck next time."
         elif reward > 0.5:
             message = f"Good attempt! Score: {reward}. Try to improve further."
-        elif reward > 0.0:
+        elif reward > 0.01:
             message = f"Partial credit: {reward}. Review the task instructions and try again."
         else:
             message = f"Score: 0. Your response was not in the correct format. Please re-read the instructions."
