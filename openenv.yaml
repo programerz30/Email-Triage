@@ -51,7 +51,7 @@ observation_space:
 
 reward:
   type: float
-  range: [0.0, 1.0]
+  range: [0.01, 0.99]
   description: >
     Partial credit reward given at each step.
     Scores increase based on accuracy of category, priority,
