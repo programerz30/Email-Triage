@@ -126,6 +126,7 @@ def run_task(task_name: str):
             break
 
         reward     = float(result.get("reward", 0.01))
+        reward     = max(0.01, min(reward, 0.99))  
         done       = bool(result.get("done", False))
         obs        = result.get("observation", obs)
         step_error = result.get("error") or result.get("info", {}).get("error")
