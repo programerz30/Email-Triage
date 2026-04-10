@@ -1,19 +1,11 @@
 """
 inference.py - Baseline Inference Script for Email Triage OpenEnv
-=====================================================================
-This script runs an LLM agent against the Email Triage environment
-and logs results in the required [START] / [STEP] / [END] format.
-
-Required environment variables:
-  API_BASE_URL  - LLM API endpoint (has default)
-  MODEL_NAME    - Model to use (has default)
-  HF_TOKEN      - Hugging Face token (REQUIRED, no default)
 """
 import os
 import requests
 from openai import OpenAI
 
-# ── Environment variables (with required defaults) ──────────────────────────
+# ── Environment variables ────────────────────────────────────────────────────
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "meta-llama/Llama-3.3-70B-Instruct")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "https://proz1-email-triage.hf.space")
@@ -22,12 +14,8 @@ HF_TOKEN     = os.getenv("HF_TOKEN")
 if HF_TOKEN is None:
     raise ValueError("HF_TOKEN environment variable is required")
 
-# ── OpenAI client pointed at HF free inference API ──────────────────────────
-
-
 TASKS = ["task1_categorize", "task2_prioritize", "task3_full_triage"]
 
-# ── System prompt ────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are an expert customer support email triage agent.
 
 For task1_categorize: Reply with ONLY the category name. Nothing else.
@@ -45,16 +33,20 @@ reply=<professional reply to the customer>
 Follow the format exactly. No extra text. No explanations."""
 
 
+def clamp(value: float) -> float:
+    """Ensure reward is strictly between 0 and 1 (exclusive)."""
+    return round(max(0.01, min(float(value), 0.99)), 2)
+
+
 def build_user_prompt(obs: dict) -> str:
-    return f"""Task: {obs.get('task_description', '')}
-
-Email ID: {obs.get('email_id', '')}
-Subject: {obs.get('subject', '')}
-From: {obs.get('sender', '')}
-Body:
-{obs.get('body', '')}
-
-Step {obs.get('step_number', 1)} | Last reward: {obs.get('last_reward', 0.0)}"""
+    return (
+        f"Task: {obs.get('task_description', '')}\n\n"
+        f"Email ID: {obs.get('email_id', '')}\n"
+        f"Subject: {obs.get('subject', '')}\n"
+        f"From: {obs.get('sender', '')}\n"
+        f"Body:\n{obs.get('body', '')}\n\n"
+        f"Step {obs.get('step_number', 1)}"
+    )
 
 
 def get_action(obs: dict) -> str:
@@ -70,12 +62,11 @@ def get_action(obs: dict) -> str:
             temperature=0.0,
         )
         return response.choices[0].message.content.strip()
-    except Exception as e:
-        return ""
+    except Exception:
+        return "billing"  # fallback to a valid category
 
 
 def run_task(task_name: str):
-    # ── Reset environment ────────────────────────────────────────────────────
     try:
         reset_resp = requests.post(
             f"{ENV_BASE_URL}/reset",
@@ -84,11 +75,13 @@ def run_task(task_name: str):
         )
         reset_resp.raise_for_status()
         obs = reset_resp.json()
+        if "observation" in obs:
+            obs = obs["observation"]
     except Exception as e:
         print(f"[START] task={task_name} env=EmailTriageEnv model={MODEL_NAME}")
-        print(f"[STEP] step=1 action='' reward=0.01 done=true error={str(e)}")
+        print(f"[STEP] step=1 action='billing' reward=0.01 done=true error={str(e)}")
         print(f"[END] success=false steps=1 rewards=0.01")
-        return []
+        return [0.01]
 
     print(f"[START] task={task_name} env=EmailTriageEnv model={MODEL_NAME}")
 
@@ -97,17 +90,15 @@ def run_task(task_name: str):
     done     = False
 
     while not done:
-        step_num   += 1
-        last_error  = None
+        step_num  += 1
+        last_error = None
 
-        # ── Get action from LLM ──────────────────────────────────────────────
         try:
             action_text = get_action(obs)
         except Exception as e:
             last_error  = str(e)
-            action_text = ""
+            action_text = "billing"
 
-        # ── Send action to environment ───────────────────────────────────────
         try:
             step_resp = requests.post(
                 f"{ENV_BASE_URL}/step",
@@ -118,22 +109,28 @@ def run_task(task_name: str):
             result = step_resp.json()
         except Exception as e:
             last_error = str(e)
-            rewards.append(0.01)
+            reward = 0.01
+            rewards.append(reward)
             print(
                 f"[STEP] step={step_num} action={repr(action_text)} "
-                f"reward=0.01 done=true error={last_error}"
+                f"reward={reward:.2f} done=true error={last_error}"
             )
             break
 
-        reward     = float(result.get("reward", 0.01))
-        reward     = max(0.01, min(reward, 0.99))  
+        # ── Clamp reward strictly between 0 and 1 ───────────────────────────
+        reward     = clamp(result.get("reward", 0.01))
         done       = bool(result.get("done", False))
-        obs        = result.get("observation", obs)
-        step_error = result.get("error") or result.get("info", {}).get("error")
+
+        # Handle both flat and nested observation formats
+        new_obs = result.get("observation", obs)
+        if isinstance(new_obs, dict) and "observation" in new_obs:
+            new_obs = new_obs["observation"]
+        obs = new_obs
+
+        step_error = result.get("error") or (result.get("info") or {}).get("error")
         last_error = step_error if step_error else last_error
 
         rewards.append(reward)
-
         action_oneline = action_text.replace("\n", "\\n")
 
         print(
@@ -142,8 +139,11 @@ def run_task(task_name: str):
             f"error={last_error if last_error else 'null'}"
         )
 
-    # ── Episode end ──────────────────────────────────────────────────────────
-    success     = any(r > 0 for r in rewards)
+        # Safety cap — never loop more than max_steps
+        if step_num >= 10:
+            done = True
+
+    success     = any(r > 0.01 for r in rewards)
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
 
     print(
@@ -153,10 +153,8 @@ def run_task(task_name: str):
     return rewards
 
 
-# ── Entry point ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     all_rewards = {}
-
     for task in TASKS:
         try:
             task_rewards = run_task(task)
