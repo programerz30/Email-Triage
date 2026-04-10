@@ -23,7 +23,7 @@ if HF_TOKEN is None:
     raise ValueError("HF_TOKEN environment variable is required")
 
 # ── OpenAI client pointed at HF free inference API ──────────────────────────
-client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+
 
 TASKS = ["task1_categorize", "task2_prioritize", "task3_full_triage"]
 
@@ -58,16 +58,20 @@ Step {obs.get('step_number', 1)} | Last reward: {obs.get('last_reward', 0.0)}"""
 
 
 def get_action(obs: dict) -> str:
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": build_user_prompt(obs)},
-        ],
-        max_tokens=512,
-        temperature=0.0,
-    )
-    return response.choices[0].message.content.strip()
+    try:
+        client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": build_user_prompt(obs)},
+            ],
+            max_tokens=512,
+            temperature=0.0,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return ""
 
 
 def run_task(task_name: str):
