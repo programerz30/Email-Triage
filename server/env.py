@@ -124,7 +124,7 @@ class EmailTriageEnv:
         """
         if self.done:
             obs = self._make_observation(message="Episode is already done. Call reset() to start again.")
-            return StepResult(observation=obs, reward=0.0, done=True, info={"error": "episode_done"})
+            return StepResult(observation=obs, reward=0.01, done=True, info={"error": "episode_done"})
 
         self.current_step += 1
         agent_text = action.text.strip()
@@ -135,16 +135,16 @@ class EmailTriageEnv:
 
         # Apply small penalty for very short/empty responses (penalize lazy behavior)
         if len(agent_text) < 3:
-            reward = max(0.0, reward - 0.2)
+            reward = max(0.01, reward - 0.2)
 
         # Apply small penalty for taking too many steps without success
         max_steps = self.task_config["max_steps"]
         step_penalty = 0.0
         if self.current_step > max_steps // 2:
             step_penalty = 0.05 * (self.current_step - max_steps // 2)
-            reward = max(0.0, reward - step_penalty)
+            reward = max(0.01, reward - step_penalty)
 
-        reward = round(reward, 2)
+        reward = round(max(0.01, min(reward, 0.99)), 2)
         self.rewards_history.append(reward)
         self.cumulative_reward += reward
 
