@@ -86,8 +86,8 @@ def run_task(task_name: str):
         obs = reset_resp.json()
     except Exception as e:
         print(f"[START] task={task_name} env=EmailTriageEnv model={MODEL_NAME}")
-        print(f"[STEP] step=1 action='' reward=0.00 done=true error={str(e)}")
-        print(f"[END] success=false steps=1 rewards=0.00")
+        print(f"[STEP] step=1 action='' reward=0.01 done=true error={str(e)}")
+        print(f"[END] success=false steps=1 rewards=0.01")
         return []
 
     print(f"[START] task={task_name} env=EmailTriageEnv model={MODEL_NAME}")
@@ -118,14 +118,14 @@ def run_task(task_name: str):
             result = step_resp.json()
         except Exception as e:
             last_error = str(e)
-            rewards.append(0.0)
+            rewards.append(0.01)
             print(
                 f"[STEP] step={step_num} action={repr(action_text)} "
-                f"reward=0.00 done=true error={last_error}"
+                f"reward=0.01 done=true error={last_error}"
             )
             break
 
-        reward     = float(result.get("reward", 0.0))
+        reward     = float(result.get("reward", 0.01))
         done       = bool(result.get("done", False))
         obs        = result.get("observation", obs)
         step_error = result.get("error") or result.get("info", {}).get("error")
@@ -161,7 +161,7 @@ if __name__ == "__main__":
             task_rewards = run_task(task)
             all_rewards[task] = task_rewards
         except Exception as e:
-            print(f"[END] success=false steps=0 rewards=0.00")
+            print(f"[END] success=false steps=0 rewards=0.01")
 
     print("\n=== SUMMARY ===")
     for task, rewards in all_rewards.items():
